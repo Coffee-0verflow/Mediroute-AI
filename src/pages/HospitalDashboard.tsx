@@ -8,6 +8,10 @@ import { useHospitals, Hospital } from '@/hooks/useHospitals';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { 
   Building2, 
@@ -29,7 +33,11 @@ import {
   XCircle,
   Phone,
   Plus,
-  Unlock
+  Unlock,
+  Settings,
+  Bed,
+  Activity,
+  Heart
 } from 'lucide-react';
 import Map from '@/components/Map';
 import TwoLegRouteMap from '@/components/TwoLegRouteMap';
@@ -39,7 +47,7 @@ import HospitalSpecialtyManager from '@/components/HospitalSpecialtyManager';
 import AmbulanceFleetManagement from '@/components/AmbulanceFleetManagement';
 import { toast } from 'sonner';
 
-type NavItem = 'dashboard' | 'ambulances' | 'tokens' | 'livemap' | 'create-emergency' | 'specialties';
+type NavItem = 'dashboard' | 'ambulances' | 'tokens' | 'livemap' | 'create-emergency' | 'specialties' | 'hospitals' | 'network';
 
 export default function HospitalDashboard() {
   const navigate = useNavigate();
@@ -54,14 +62,26 @@ export default function HospitalDashboard() {
   const [selectedTokenForDisplay, setSelectedTokenForDisplay] = useState<string | null>(null);
   const [declineTokenId, setDeclineTokenId] = useState<string | null>(null);
   const [declineReason, setDeclineReason] = useState('');
+  const [selectedRegion, setSelectedRegion] = useState<string>('all');
+  const [showAddHospital, setShowAddHospital] = useState(false);
+  const [hospitalForm, setHospitalForm] = useState({
+    name: '',
+    address: '',
+    region: '',
+    latitude: '',
+    longitude: ''
+  });
+  const [selectedHospitalId, setSelectedHospitalId] = useState<string | null>(null);
   const [selectedAmbulanceId, setSelectedAmbulanceId] = useState<string | null>(null);
 
   const navItems = [
     { id: 'dashboard' as NavItem, icon: LayoutDashboard, label: 'Dashboard' },
+    { id: 'network' as NavItem, icon: Activity, label: 'Hospital Network' },
     { id: 'create-emergency' as NavItem, icon: Phone, label: 'Create Emergency' },
     { id: 'tokens' as NavItem, icon: Ticket, label: `Tokens (${pendingTokens.length + assignedTokens.length})` },
     { id: 'ambulances' as NavItem, icon: Ambulance, label: 'Ambulances' },
-    { id: 'specialties' as NavItem, icon: Building2, label: 'Specialties' },
+    { id: 'hospitals' as NavItem, icon: Building2, label: 'Hospital Management' },
+    { id: 'specialties' as NavItem, icon: Settings, label: 'Specialties' },
     { id: 'livemap' as NavItem, icon: MapIcon, label: 'Live Map' },
   ];
 
@@ -200,6 +220,81 @@ export default function HospitalDashboard() {
     } else {
       toast.error('Failed to release ambulance');
     }
+  };
+
+  // Get unique regions from hospitals (excluding 'all' and 'Unknown')
+  const existingRegions = [...new Set(hospitals.map(h => h.address?.split(',').pop()?.trim()).filter(r => r && r !== 'Unknown'))];
+  const regions = ['all', ...existingRegions];
+  
+  // Predefined regions for hospital creation
+  const availableRegions = ['Punjab', 'Haryana', 'Delhi', 'Rajasthan', 'Uttar Pradesh', 'Himachal Pradesh', ...existingRegions].filter((r, i, arr) => arr.indexOf(r) === i);
+  
+  // Filter hospitals by selected region
+  const filteredHospitals = selectedRegion === 'all' 
+    ? hospitals 
+    : hospitals.filter(h => h.address?.includes(selectedRegion));
+
+  // Mock hospital capacity data (in real app, this would come from API)
+  const getHospitalCapacity = (hospitalId: string) => {
+    const mockData = {
+      totalBeds: Math.floor(Math.random() * 200) + 50,
+      icuBeds: Math.floor(Math.random() * 30) + 10,
+    };
+    const occupiedBeds = Math.floor(mockData.totalBeds * (0.3 + Math.random() * 0.6));
+    const occupiedICU = Math.floor(mockData.icuBeds * (0.2 + Math.random() * 0.7));
+    const occupancyRate = Math.round((occupiedBeds / mockData.totalBeds) * 100);
+    
+    return {
+      ...mockData,
+      occupiedBeds,
+      availableBeds: mockData.totalBeds - occupiedBeds,
+      occupiedICU,
+      availableICU: mockData.icuBeds - occupiedICU,
+      occupancyRate,
+      loadLevel: occupancyRate < 60 ? 'low' : occupancyRate < 85 ? 'moderate' : 'critical',
+      incomingAmbulances: Math.random() > 0.7 ? Math.floor(Math.random() * 3) + 1 : 0
+    };
+  };
+
+  // Calculate network totals
+  const networkStats = hospitals.reduce((acc, hospital) => {
+    const capacity = getHospitalCapacity(hospital.id);
+    return {
+      totalBeds: acc.totalBeds + capacity.totalBeds,
+      availableBeds: acc.availableBeds + capacity.availableBeds,
+      totalICU: acc.totalICU + capacity.icuBeds,
+      availableICU: acc.availableICU + capacity.availableICU,
+      incomingAmbulances: acc.incomingAmbulances + capacity.incomingAmbulances
+    };
+  }, { totalBeds: 0, availableBeds: 0, totalICU: 0, availableICU: 0, incomingAmbulances: 0 });
+
+  const networkOccupancyRate = networkStats.totalBeds > 0 
+    ? Math.round(((networkStats.totalBeds - networkStats.availableBeds) / networkStats.totalBeds) * 100)
+    : 0;
+
+  const handleAddHospital = async () => {
+    if (!hospitalForm.name || !hospitalForm.address || !hospitalForm.region || !hospitalForm.latitude || !hospitalForm.longitude) {
+      toast.error('Please fill all fields');
+      return;
+    }
+
+    const lat = parseFloat(hospitalForm.latitude);
+    const lng = parseFloat(hospitalForm.longitude);
+    
+    if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      toast.error('Please enter valid coordinates');
+      return;
+    }
+
+    // Here you would typically call an API to add the hospital
+    // For now, just show success message
+    toast.success('Hospital added successfully!', {
+      description: `${hospitalForm.name} in ${hospitalForm.region}`
+    });
+    
+    // Reset form
+    setHospitalForm({ name: '', address: '', region: '', latitude: '', longitude: '' });
+    setShowAddHospital(false);
   };
 
   const selectedToken = [...pendingTokens, ...assignedTokens].find(t => t.id === selectedTokenForRoute);
@@ -415,6 +510,389 @@ export default function HospitalDashboard() {
                   </CardContent>
                 </Card>
               ))}
+            </div>
+          </div>
+        );
+
+      case 'network':
+        return (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-bold">Hospital Network Capacity</h2>
+              <Button variant="outline" size="sm">
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Refresh Network
+              </Button>
+            </div>
+            
+            {/* Network Summary Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+              <Card className="bg-blue-500/10 border-blue-500/20">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2">
+                    <Bed className="w-5 h-5 text-blue-400" />
+                    <span className="text-sm text-muted-foreground">Total Beds</span>
+                  </div>
+                  <p className="text-2xl font-bold text-blue-400">{networkStats.totalBeds}</p>
+                </CardContent>
+              </Card>
+              
+              <Card className="bg-green-500/10 border-green-500/20">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2">
+                    <Bed className="w-5 h-5 text-green-400" />
+                    <span className="text-sm text-muted-foreground">Available</span>
+                  </div>
+                  <p className="text-2xl font-bold text-green-400">{networkStats.availableBeds}</p>
+                </CardContent>
+              </Card>
+              
+              <Card className={`${networkOccupancyRate < 60 ? 'bg-green-500/10 border-green-500/20' : networkOccupancyRate < 85 ? 'bg-yellow-500/10 border-yellow-500/20' : 'bg-red-500/10 border-red-500/20'}`}>
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2">
+                    <Activity className="w-5 h-5 text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">Occupancy</span>
+                  </div>
+                  <p className={`text-2xl font-bold ${networkOccupancyRate < 60 ? 'text-green-400' : networkOccupancyRate < 85 ? 'text-yellow-400' : 'text-red-400'}`}>
+                    {networkOccupancyRate}%
+                  </p>
+                </CardContent>
+              </Card>
+              
+              <Card className="bg-purple-500/10 border-purple-500/20">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2">
+                    <Heart className="w-5 h-5 text-purple-400" />
+                    <span className="text-sm text-muted-foreground">ICU Beds</span>
+                  </div>
+                  <p className="text-2xl font-bold text-purple-400">{networkStats.totalICU}</p>
+                </CardContent>
+              </Card>
+              
+              <Card className="bg-indigo-500/10 border-indigo-500/20">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2">
+                    <Heart className="w-5 h-5 text-indigo-400" />
+                    <span className="text-sm text-muted-foreground">ICU Available</span>
+                  </div>
+                  <p className="text-2xl font-bold text-indigo-400">{networkStats.availableICU}</p>
+                </CardContent>
+              </Card>
+              
+              <Card className="bg-orange-500/10 border-orange-500/20">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2">
+                    <Ambulance className="w-5 h-5 text-orange-400" />
+                    <span className="text-sm text-muted-foreground">Incoming</span>
+                  </div>
+                  <p className="text-2xl font-bold text-orange-400">{networkStats.incomingAmbulances}</p>
+                </CardContent>
+              </Card>
+            </div>
+            
+            <div className="grid lg:grid-cols-3 gap-6">
+              {/* Hospital List */}
+              <div className="lg:col-span-2 space-y-4">
+                <h3 className="text-lg font-semibold">Hospital Status</h3>
+                <div className="space-y-3">
+                  {hospitals.map(hospital => {
+                    const capacity = getHospitalCapacity(hospital.id);
+                    return (
+                      <Card 
+                        key={hospital.id} 
+                        className={`cursor-pointer transition-all hover:shadow-lg ${
+                          selectedHospitalId === hospital.id ? 'ring-2 ring-primary' : ''
+                        }`}
+                        onClick={() => setSelectedHospitalId(hospital.id)}
+                      >
+                        <CardContent className="p-4">
+                          {/* Incoming Ambulance Banner */}
+                          {capacity.incomingAmbulances > 0 && (
+                            <div className="bg-orange-500/10 border border-orange-500/20 rounded-lg p-2 mb-3">
+                              <div className="flex items-center gap-2">
+                                <Ambulance className="w-4 h-4 text-orange-400 animate-pulse" />
+                                <span className="text-sm text-orange-400 font-medium">
+                                  {capacity.incomingAmbulances} ambulance{capacity.incomingAmbulances > 1 ? 's' : ''} incoming
+                                </span>
+                                <Badge variant="outline" className="text-xs">ETA: 8-12 min</Badge>
+                              </div>
+                            </div>
+                          )}
+                          
+                          <div className="flex items-start justify-between mb-3">
+                            <div>
+                              <h4 className="font-semibold">{hospital.organization_name}</h4>
+                              <p className="text-sm text-muted-foreground">{hospital.address}</p>
+                            </div>
+                            <Badge 
+                              variant={capacity.loadLevel === 'low' ? 'default' : capacity.loadLevel === 'moderate' ? 'secondary' : 'destructive'}
+                              className={`${
+                                capacity.loadLevel === 'low' ? 'bg-green-500/20 text-green-400 border-green-500/30' :
+                                capacity.loadLevel === 'moderate' ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' :
+                                'bg-red-500/20 text-red-400 border-red-500/30'
+                              }`}
+                            >
+                              {capacity.loadLevel === 'low' ? 'Low Load' : capacity.loadLevel === 'moderate' ? 'Moderate Load' : 'Critical Load'}
+                            </Badge>
+                          </div>
+                          
+                          <div className="grid grid-cols-3 gap-3 mb-3">
+                            <div className="text-center">
+                              <p className="text-sm text-muted-foreground">Total Beds</p>
+                              <p className="font-semibold">{capacity.totalBeds}</p>
+                            </div>
+                            <div className="text-center bg-green-500/10 rounded p-2">
+                              <p className="text-sm text-green-400">Available</p>
+                              <p className="font-semibold text-green-400">{capacity.availableBeds}</p>
+                            </div>
+                            <div className="text-center bg-purple-500/10 rounded p-2">
+                              <p className="text-sm text-purple-400">ICU Beds</p>
+                              <p className="font-semibold text-purple-400">{capacity.icuBeds}</p>
+                            </div>
+                          </div>
+                          
+                          <div className="space-y-2">
+                            <div className="flex justify-between text-sm">
+                              <span>Occupancy</span>
+                              <span>{capacity.occupancyRate}%</span>
+                            </div>
+                            <Progress 
+                              value={capacity.occupancyRate} 
+                              className={`h-2 ${
+                                capacity.occupancyRate < 60 ? '[&>div]:bg-green-500' :
+                                capacity.occupancyRate < 85 ? '[&>div]:bg-yellow-500' :
+                                '[&>div]:bg-red-500'
+                              }`}
+                            />
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </div>
+              
+              {/* Hospital Details Panel */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">Hospital Details</h3>
+                {selectedHospitalId ? (
+                  (() => {
+                    const hospital = hospitals.find(h => h.id === selectedHospitalId);
+                    const capacity = getHospitalCapacity(selectedHospitalId);
+                    return hospital ? (
+                      <Card>
+                        <CardContent className="p-4 space-y-4">
+                          <div>
+                            <h4 className="font-semibold text-lg">{hospital.organization_name}</h4>
+                            <p className="text-sm text-muted-foreground">{hospital.address}</p>
+                          </div>
+                          
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="bg-blue-500/10 rounded p-3">
+                              <p className="text-sm text-blue-400">Total Beds</p>
+                              <p className="text-xl font-bold text-blue-400">{capacity.totalBeds}</p>
+                            </div>
+                            <div className="bg-green-500/10 rounded p-3">
+                              <p className="text-sm text-green-400">Available</p>
+                              <p className="text-xl font-bold text-green-400">{capacity.availableBeds}</p>
+                            </div>
+                            <div className="bg-purple-500/10 rounded p-3">
+                              <p className="text-sm text-purple-400">ICU Total</p>
+                              <p className="text-xl font-bold text-purple-400">{capacity.icuBeds}</p>
+                            </div>
+                            <div className="bg-indigo-500/10 rounded p-3">
+                              <p className="text-sm text-indigo-400">ICU Available</p>
+                              <p className="text-xl font-bold text-indigo-400">{capacity.availableICU}</p>
+                            </div>
+                          </div>
+                          
+                          <div className="space-y-2">
+                            <h5 className="font-medium">Specialties</h5>
+                            <div className="flex flex-wrap gap-1">
+                              {['Emergency', 'Cardiology', 'Neurology', 'Orthopedics'].map(specialty => (
+                                <Badge key={specialty} variant="outline" className="text-xs">
+                                  {specialty}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ) : null;
+                  })()
+                ) : (
+                  <Card className="h-64">
+                    <CardContent className="p-4 h-full flex items-center justify-center">
+                      <div className="text-center text-muted-foreground">
+                        <Building2 className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                        <p>Select a hospital to view details</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'hospitals':
+        return (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-bold">Hospital Management</h2>
+              <div className="flex items-center gap-2">
+                <Button onClick={() => setShowAddHospital(true)} className="mr-2">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Hospital
+                </Button>
+                <span className="text-sm text-muted-foreground">Region:</span>
+                <Select value={selectedRegion} onValueChange={setSelectedRegion}>
+                  <SelectTrigger className="w-48">
+                    <SelectValue placeholder="Select region" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Regions</SelectItem>
+                    {regions.slice(1).map(region => (
+                      <SelectItem key={region} value={region}>{region}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            
+            {/* Add Hospital Form */}
+            {showAddHospital && (
+              <Card className="border-primary/30 bg-primary/5">
+                <CardHeader>
+                  <CardTitle className="flex items-center justify-between">
+                    <span>Add New Hospital</span>
+                    <Button variant="ghost" size="sm" onClick={() => setShowAddHospital(false)}>
+                      <XCircle className="w-4 h-4" />
+                    </Button>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="hospital-name">Hospital Name</Label>
+                      <Input
+                        id="hospital-name"
+                        placeholder="Enter hospital name"
+                        value={hospitalForm.name}
+                        onChange={(e) => setHospitalForm(prev => ({ ...prev, name: e.target.value }))}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="hospital-region">Region</Label>
+                      <Select value={hospitalForm.region} onValueChange={(value) => setHospitalForm(prev => ({ ...prev, region: value }))}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select region" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableRegions.map(region => (
+                            <SelectItem key={region} value={region}>{region}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="hospital-address">Full Address</Label>
+                    <Textarea
+                      id="hospital-address"
+                      placeholder="Enter complete hospital address"
+                      value={hospitalForm.address}
+                      onChange={(e) => setHospitalForm(prev => ({ ...prev, address: e.target.value }))}
+                      className="min-h-[80px]"
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="hospital-lat">Latitude</Label>
+                      <Input
+                        id="hospital-lat"
+                        type="number"
+                        step="any"
+                        placeholder="e.g., 30.7333"
+                        value={hospitalForm.latitude}
+                        onChange={(e) => setHospitalForm(prev => ({ ...prev, latitude: e.target.value }))}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="hospital-lng">Longitude</Label>
+                      <Input
+                        id="hospital-lng"
+                        type="number"
+                        step="any"
+                        placeholder="e.g., 76.7794"
+                        value={hospitalForm.longitude}
+                        onChange={(e) => setHospitalForm(prev => ({ ...prev, longitude: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="flex gap-2 pt-4">
+                    <Button onClick={handleAddHospital} className="flex-1">
+                      <Building2 className="w-4 h-4 mr-2" />
+                      Add Hospital
+                    </Button>
+                    <Button variant="outline" onClick={() => setShowAddHospital(false)}>
+                      Cancel
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            
+            <div className="grid gap-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Building2 className="w-5 h-5" />
+                    Hospitals in {selectedRegion === 'all' ? 'All Regions' : selectedRegion}
+                    <Badge variant="secondary">{filteredHospitals.length}</Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {filteredHospitals.length === 0 ? (
+                    <p className="text-muted-foreground text-center py-8">No hospitals found in selected region</p>
+                  ) : (
+                    <div className="grid gap-3">
+                      {filteredHospitals.map(hospital => (
+                        <Card key={hospital.id} className="border-muted">
+                          <CardContent className="p-4">
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <h3 className="font-semibold text-lg">{hospital.organization_name}</h3>
+                                <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
+                                  <MapPin className="w-4 h-4" />
+                                  <span>{hospital.address}</span>
+                                </div>
+                                <div className="flex items-center gap-2 mt-2">
+                                  <Badge variant="outline">
+                                    {hospital.location_lat?.toFixed(4)}, {hospital.location_lng?.toFixed(4)}
+                                  </Badge>
+                                  <Badge variant="secondary">
+                                    {hospital.address?.split(',').pop()?.trim() || 'Unknown Region'}
+                                  </Badge>
+                                </div>
+                              </div>
+                              <div className="flex flex-col items-end gap-2">
+                                <Badge variant="default">Active</Badge>
+                                <span className="text-xs text-muted-foreground">
+                                  ID: {hospital.id.slice(0, 8)}...
+                                </span>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </div>
           </div>
         );

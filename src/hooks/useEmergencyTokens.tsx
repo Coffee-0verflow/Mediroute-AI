@@ -143,12 +143,9 @@ export function useEmergencyTokens() {
                 });
             }
 
+            // Only update existing tokens, never add new ones via UPDATE event
             setTokens((prev) => {
-              const exists = prev.some((t) => t.id === updatedToken.id);
-              const next = exists
-                ? prev.map((t) => (t.id === updatedToken.id ? updatedToken : t))
-                : [updatedToken, ...prev];
-
+              const next = prev.map((t) => (t.id === updatedToken.id ? updatedToken : t));
               setActiveToken(findActiveToken(next));
               return next;
             });
@@ -364,13 +361,10 @@ export function useEmergencyTokens() {
 
       if (error || !data) throw error;
 
+      // Immediately update local state to ensure UI reflects changes
       const updated = normalizeToken(data);
       setTokens((prev) => {
-        const exists = prev.some((t) => t.id === updated.id);
-        const next = exists
-          ? prev.map((t) => (t.id === updated.id ? updated : t))
-          : [updated, ...prev];
-
+        const next = prev.map((t) => (t.id === updated.id ? updated : t));
         setActiveToken(findActiveToken(next));
         return next;
       });
@@ -612,11 +606,7 @@ export function useEmergencyTokens() {
 
       const updated = normalizeToken(data);
       setTokens((prev) => {
-        const exists = prev.some((t) => t.id === updated.id);
-        const next = exists
-          ? prev.map((t) => (t.id === updated.id ? updated : t))
-          : [updated, ...prev];
-
+        const next = prev.map((t) => (t.id === updated.id ? updated : t));
         setActiveToken(findActiveToken(next));
         return next;
       });
