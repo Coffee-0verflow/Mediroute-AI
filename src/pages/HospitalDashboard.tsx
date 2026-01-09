@@ -212,80 +212,23 @@ export default function HospitalDashboard() {
   };
 
   const renderContent = () => {
-    // Emergency Display View
-    if (selectedTokenForDisplay) {
-      const token = [...pendingTokens, ...assignedTokens, ...activeTokens].find(t => t.id === selectedTokenForDisplay);
-      if (!token) {
-        setSelectedTokenForDisplay(null);
-        return null;
-      }
 
+    // Route Selection View (shows Emergency Analysis & Assignment)
+    if (selectedTokenForRoute && selectedToken) {
       return (
         <div className="space-y-6">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold">Emergency Analysis</h2>
-            <Button variant="outline" onClick={() => setSelectedTokenForDisplay(null)}>
+            <h2 className="text-xl font-bold">Emergency Analysis & Hospital Assignment</h2>
+            <Button variant="outline" onClick={() => setSelectedTokenForRoute(null)}>
               Back to Tokens
             </Button>
           </div>
           <EmergencyDisplay 
-            token={token}
-          />
-        </div>
-      );
-    }
-
-    // Route Selection View
-    if (selectedTokenForRoute && selectedToken) {
-      const ambulance = getAmbulanceForToken(selectedTokenForRoute);
-      const ambulanceLat = selectedToken.ambulance_origin_lat || ambulance?.current_lat || 30.7333;
-      const ambulanceLng = selectedToken.ambulance_origin_lng || ambulance?.current_lng || 76.7794;
-
-      return (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-bold">Assign Route for Token: {selectedToken.token_code}</h2>
-              <p className="text-sm text-muted-foreground">Select a hospital to calculate the best routes</p>
-            </div>
-            <Button variant="outline" onClick={() => setSelectedTokenForRoute(null)}>
-              Back
-            </Button>
-          </div>
-
-          {/* Token Summary */}
-          <Card className="bg-muted/50">
-            <CardContent className="p-4">
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-blue-500/20 rounded-full flex items-center justify-center">
-                    <Ambulance className="w-5 h-5 text-blue-500" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Ambulance Location</p>
-                    <p className="font-medium text-sm">{ambulanceLat.toFixed(4)}, {ambulanceLng.toFixed(4)}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-red-500/20 rounded-full flex items-center justify-center">
-                    <User className="w-5 h-5 text-red-500" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Patient Pickup</p>
-                    <p className="font-medium text-sm">{selectedToken.pickup_address || `${selectedToken.pickup_lat.toFixed(4)}, ${selectedToken.pickup_lng.toFixed(4)}`}</p>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <TwoLegRouteMap
-            ambulanceLat={ambulanceLat}
-            ambulanceLng={ambulanceLng}
-            pickupLat={selectedToken.pickup_lat}
-            pickupLng={selectedToken.pickup_lng}
-            hospitals={hospitals}
-            onRouteSelect={handleRouteSelect}
+            token={selectedToken} 
+            onAssignmentComplete={() => {
+              setSelectedTokenForRoute(null);
+              setActiveNav('dashboard');
+            }}
           />
         </div>
       );
@@ -377,12 +320,8 @@ export default function HospitalDashboard() {
                           </div>
                         ) : (
                           <div className="flex gap-2">
-                            <Button onClick={() => setSelectedTokenForDisplay(token.id)} variant="secondary" className="flex-1">
+                            <Button onClick={() => setSelectedTokenForRoute(token.id)} variant="secondary" className="flex-1">
                               <AlertTriangle className="w-4 h-4 mr-2" />
-                              Analyze Emergency
-                            </Button>
-                            <Button onClick={() => setSelectedTokenForRoute(token.id)} className="flex-1">
-                              <Building2 className="w-4 h-4 mr-2" />
                               Assign Hospital & Route
                             </Button>
                             <Button 

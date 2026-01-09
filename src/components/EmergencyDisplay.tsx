@@ -10,9 +10,10 @@ import { toast } from 'sonner';
 
 interface EmergencyDisplayProps {
   token: EmergencyToken;
+  onAssignmentComplete?: () => void;
 }
 
-export default function EmergencyDisplay({ token }: EmergencyDisplayProps) {
+export default function EmergencyDisplay({ token, onAssignmentComplete }: EmergencyDisplayProps) {
   const { findBestHospitals } = useHospitalSpecialties();
   const { createHospitalEmergency } = useEmergencyTokens();
   const [recommendations, setRecommendations] = useState<{
@@ -80,6 +81,10 @@ export default function EmergencyDisplay({ token }: EmergencyDisplayProps) {
         toast.success(`${type === 'best' ? 'Best Specialist' : 'Nearest'} Hospital Assigned!`, {
           description: `${hospital.hospital.organization_name} - Routes calculated`
         });
+        // Redirect back to dashboard after successful assignment
+        if (onAssignmentComplete) {
+          setTimeout(() => onAssignmentComplete(), 1500);
+        }
       } else {
         toast.error('Failed to assign hospital');
       }
@@ -91,11 +96,7 @@ export default function EmergencyDisplay({ token }: EmergencyDisplayProps) {
     }
   };
 
-  const formatDistance = (meters: number) => (meters / 1000).toFixed(1) + ' km';
-  const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    return mins < 60 ? `${mins} min` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
-  };
+  const getEmergencyIcon = (type: string) => {
     const icons: Record<string, string> = {
       'Cardiac Emergency (Heart Attack)': '❤️',
       'Accident / Trauma': '🚗',
@@ -109,65 +110,10 @@ export default function EmergencyDisplay({ token }: EmergencyDisplayProps) {
     return icons[type] || '🚨';
   };
 
-  const handleAssignHospital = async (hospital: any, type: 'best' | 'nearest') => {
-    if (!token.ambulance_origin_lat || !token.ambulance_origin_lng) {
-      toast.error('Ambulance location not available');
-      return;
-    }
-
-    setIsAssigning(true);
-    try {
-      // Mock route calculation (in real app, use routing service)
-      const routeToPatient = {
-        coordinates: [
-          [token.ambulance_origin_lat, token.ambulance_origin_lng],
-          [token.pickup_lat, token.pickup_lng]
-        ] as [number, number][],
-        distance: hospital.distance,
-        duration: Math.floor(hospital.distance / 1000 * 60), // rough estimate
-        type: 'fastest' as const
-      };
-
-      const routeToHospital = {
-        coordinates: [
-          [token.pickup_lat, token.pickup_lng],
-          [hospital.hospital.location_lat, hospital.hospital.location_lng]
-        ] as [number, number][],
-        distance: hospital.distance,
-        duration: Math.floor(hospital.distance / 1000 * 60),
-        type: 'fastest' as const
-      };
-
-      const success = await createHospitalEmergency(
-        token.ambulance_id,
-        token.ambulance_origin_lat,
-        token.ambulance_origin_lng,
-        token.pickup_lat,
-        token.pickup_lng,
-        token.pickup_address,
-        hospital.hospital.id,
-        hospital.hospital.organization_name,
-        hospital.hospital.location_lat,
-        hospital.hospital.location_lng,
-        routeToPatient,
-        routeToHospital,
-        token.emergency_type,
-        token.medical_keyword
-      );
-
-      if (success) {
-        toast.success(`${type === 'best' ? 'Best Specialist' : 'Nearest'} Hospital Assigned!`, {
-          description: `${hospital.hospital.organization_name} - Routes calculated`
-        });
-      } else {
-        toast.error('Failed to assign hospital');
-      }
-    } catch (error) {
-      console.error('Error assigning hospital:', error);
-      toast.error('Failed to assign hospital');
-    } finally {
-      setIsAssigning(false);
-    }
+  const formatDistance = (meters: number) => (meters / 1000).toFixed(1) + ' km';
+  const formatDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    return mins < 60 ? `${mins} min` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
   };
 
   return (
