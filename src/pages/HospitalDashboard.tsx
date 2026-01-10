@@ -169,8 +169,8 @@ export default function HospitalDashboard() {
     hospital: Hospital,
     routeToPatient: RouteData,
     routeToHospital: RouteData,
-    emergencyType: string,
-    medicalKeyword: string
+    emergencyType?: string,
+    medicalKeyword?: string
   ) => {
     if (!ambulance.current_lat || !ambulance.current_lng) {
       toast.error('Ambulance location not available');
@@ -194,13 +194,13 @@ export default function HospitalDashboard() {
       hospital.location_lng,
       routeToPatient,
       routeToHospital,
-      emergencyType,
-      medicalKeyword
+      emergencyType || 'General Emergency',
+      medicalKeyword || 'General'
     );
 
     if (token) {
-      toast.success(`${emergencyType} Emergency Created: ${token.token_code}`, {
-        description: `${ambulance.vehicle_number} dispatched to ${medicalKeyword} emergency → ${hospital.organization_name}`
+      toast.success(`${emergencyType || 'Emergency'} Created: ${token.token_code}`, {
+        description: `${ambulance.vehicle_number} dispatched to ${medicalKeyword || 'General'} emergency → ${hospital.organization_name}`
       });
       setActiveNav('dashboard');
     } else {

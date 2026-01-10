@@ -383,8 +383,8 @@ export default function HospitalEmergencyCreator({
       bestHospital,
       routeToPatient,
       routeToHospital,
-      selectedEmergencyType?.label || 'General Emergency',
-      selectedEmergencyType?.keyword || 'General'
+      selectedEmergencyType?.label,
+      selectedEmergencyType?.keyword
     );
   };
 
