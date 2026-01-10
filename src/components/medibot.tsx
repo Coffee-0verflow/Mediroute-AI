@@ -111,7 +111,7 @@ Describe the emergency to begin.`
               {messages.map((m, i) => (
                 <div
                   key={i}
-                  className={`p-2 rounded-lg max-w-[90%] ${
+                  className={`p-2 rounded-lg max-w-[90%] whitespace-pre-line ${
                     m.from === "bot"
                       ? "bg-muted text-cyan-300"
                       : "bg-cyan-500/20 ml-auto text-right"
