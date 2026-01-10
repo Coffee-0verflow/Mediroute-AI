@@ -64,9 +64,11 @@ export default function Index() {
                   Get Started
                 </Button>
               </Link>
-              <Button variant="outline" size="lg" className="text-lg px-8 py-6 font-semibold border-primary text-primary hover:bg-primary hover:text-primary-foreground">
-                Learn More
-              </Button>
+              <Link to="/learn-more">
+                <Button variant="outline" size="lg" className="text-lg px-8 py-6 font-semibold border-primary text-primary hover:bg-primary hover:text-primary-foreground">
+                  Learn More
+                </Button>
+              </Link>
             </div>
           </div>
 

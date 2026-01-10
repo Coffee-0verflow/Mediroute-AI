@@ -10,6 +10,7 @@ import AmbulanceDashboard from "./pages/AmbulanceDashboard";
 import HospitalDashboard from "./pages/HospitalDashboard";
 import AdminDashboard from "./pages/AdminDashboard";
 import NotFound from "./pages/NotFound";
+import LearnMore from "./pages/LearnMore";
 
 const queryClient = new QueryClient();
 
@@ -22,6 +23,7 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Index />} />
+            <Route path="/learn-more" element={<LearnMore />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/ambulance" element={<AmbulanceDashboard />} />
             <Route path="/hospital" element={<HospitalDashboard />} />
