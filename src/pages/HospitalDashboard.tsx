@@ -946,32 +946,259 @@ export default function HospitalDashboard() {
       default:
         return (
           <div className="space-y-6">
-            {/* Stats */}
+            {/* KPI Metrics Row */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <Card className="bg-emergency/10 border-emergency/20">
+              <Card className="bg-slate-900/80 border-slate-700 rounded-xl backdrop-blur-sm shadow-lg shadow-red-500/10">
                 <CardContent className="p-4">
-                  <p className="text-sm text-muted-foreground">Pending Tokens</p>
-                  <p className="text-3xl font-bold">{pendingTokens.length}</p>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-slate-400 text-sm font-medium">Active Requests</p>
+                      <p className="text-3xl font-bold text-white">{pendingTokens.length + activeTokens.length}</p>
+                      <p className="text-xs text-slate-500 mt-1">{pendingTokens.length} pending</p>
+                    </div>
+                    <div className="w-10 h-10 bg-red-500/20 rounded-full flex items-center justify-center">
+                      <AlertTriangle className="w-5 h-5 text-red-500" />
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
-              <Card className="bg-primary/10 border-primary/20">
+              <Card className="bg-slate-900/80 border-slate-700 rounded-xl backdrop-blur-sm shadow-lg shadow-green-500/10">
                 <CardContent className="p-4">
-                  <p className="text-sm text-muted-foreground">Active Journeys</p>
-                  <p className="text-3xl font-bold">{activeTokens.length}</p>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-slate-400 text-sm font-medium">Available Ambulances</p>
+                      <p className="text-3xl font-bold text-white">{ambulances.filter(a => a.emergency_status === 'inactive').length}</p>
+                      <p className="text-xs text-slate-500 mt-1">{ambulances.length} total fleet</p>
+                    </div>
+                    <div className="w-10 h-10 bg-green-500/20 rounded-full flex items-center justify-center">
+                      <Ambulance className="w-5 h-5 text-green-500" />
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
-              <Card className="bg-success/10 border-success/20">
+              <Card className="bg-slate-900/80 border-slate-700 rounded-xl backdrop-blur-sm shadow-lg shadow-blue-500/10">
                 <CardContent className="p-4">
-                  <p className="text-sm text-muted-foreground">Available Ambulances</p>
-                  <p className="text-3xl font-bold">{ambulances.filter(a => a.emergency_status === 'inactive').length}</p>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-slate-400 text-sm font-medium">Partner Hospitals</p>
+                      <p className="text-3xl font-bold text-white">{hospitals.length}</p>
+                      <p className="text-xs text-slate-500 mt-1">{hospitals.length} in network</p>
+                    </div>
+                    <div className="w-10 h-10 bg-blue-500/20 rounded-full flex items-center justify-center">
+                      <Building2 className="w-5 h-5 text-blue-500" />
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
-              <Card>
+              <Card className="bg-slate-900/80 border-slate-700 rounded-xl backdrop-blur-sm shadow-lg shadow-orange-500/10">
                 <CardContent className="p-4">
-                  <p className="text-sm text-muted-foreground">Hospitals</p>
-                  <p className="text-3xl font-bold">{hospitals.length}</p>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-slate-400 text-sm font-medium">Response Time</p>
+                      <p className="text-3xl font-bold text-white">4.2 min</p>
+                      <p className="text-xs text-slate-500 mt-1">12% improvement</p>
+                    </div>
+                    <div className="w-10 h-10 bg-orange-500/20 rounded-full flex items-center justify-center">
+                      <Clock className="w-5 h-5 text-orange-500" />
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
+            </div>
+
+            {/* Main Content Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+              {/* Active Emergency Requests - Large Central Card */}
+              <div className="lg:col-span-3">
+                <Card className="bg-slate-900/80 border-slate-700 rounded-xl backdrop-blur-sm shadow-lg">
+                  <CardHeader className="bg-red-600 text-white rounded-t-xl">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <AlertTriangle className="w-6 h-6" />
+                        <CardTitle className="text-xl">Active Emergency Requests</CardTitle>
+                      </div>
+                      <RefreshCw className="w-5 h-5 cursor-pointer hover:rotate-180 transition-transform" onClick={() => window.location.reload()} />
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-6 space-y-4">
+                    {[...pendingTokens, ...activeTokens].length === 0 ? (
+                      <div className="text-center py-8 text-slate-400">
+                        No active emergency requests
+                      </div>
+                    ) : (
+                      [...pendingTokens, ...activeTokens].map((token) => {
+                        const ambulance = ambulances.find(a => a.id === token.ambulance_id);
+                        const isPending = token.status === 'pending';
+                        const isCritical = token.status === 'in_progress' || token.status === 'to_hospital';
+                        
+                        return (
+                          <div key={token.id} className="flex items-center justify-between p-4 bg-slate-800/50 rounded-lg border border-slate-700">
+                            <div className="flex items-center gap-4">
+                              <div className="flex gap-2">
+                                <Badge className={isCritical ? "bg-red-800 text-white animate-pulse" : "bg-red-600 text-white"}>
+                                  {isCritical ? 'CRITICAL' : 'HIGH'}
+                                </Badge>
+                                <Badge className={`${isPending ? 'bg-orange-600' : token.status === 'in_progress' ? 'bg-blue-600' : 'bg-green-600'} text-white`}>
+                                  {token.status.replace('_', ' ').toUpperCase()}
+                                </Badge>
+                              </div>
+                              <div>
+                                <p className="font-semibold text-white">{token.token_code}</p>
+                                <p className="text-sm text-slate-400">{token.pickup_address || `${token.pickup_lat.toFixed(4)}, ${token.pickup_lng.toFixed(4)}`}</p>
+                                <p className="text-xs text-slate-500">{ambulance?.vehicle_number || 'Unknown ambulance'}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-4">
+                              <span className="text-sm text-slate-400">{new Date(token.created_at).toLocaleTimeString()}</span>
+                              <Button 
+                                size="sm" 
+                                variant="outline" 
+                                className="border-slate-600 text-slate-300"
+                                onClick={() => setActiveNav('tokens')}
+                              >
+                                <Eye className="w-4 h-4 mr-1" />
+                                View Details
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Recent Activity Panel */}
+              <div className="lg:col-span-1">
+                <Card className="bg-slate-900/80 border-slate-700 rounded-xl backdrop-blur-sm shadow-lg">
+                  <CardHeader className="bg-green-600 text-white rounded-t-xl">
+                    <CardTitle className="text-lg">Recent Activity</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-4 space-y-3">
+                    {[...pendingTokens, ...assignedTokens, ...activeTokens].slice(0, 5).map((token) => {
+                      const ambulance = ambulances.find(a => a.id === token.ambulance_id);
+                      const isCritical = token.status === 'in_progress' || token.status === 'to_hospital';
+                      
+                      return (
+                        <div key={token.id} className="p-3 bg-slate-800/50 rounded-lg border border-slate-700">
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium text-white text-sm">{token.token_code}</p>
+                            {isCritical && <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>}
+                          </div>
+                          <p className={`text-xs ${
+                            token.status === 'completed' ? 'text-green-400' :
+                            token.status === 'cancelled' ? 'text-red-400' :
+                            token.status === 'in_progress' || token.status === 'to_hospital' ? 'text-blue-400' :
+                            'text-orange-400'
+                          }`}>
+                            {token.status.replace('_', ' ')}
+                          </p>
+                          <p className="text-xs text-slate-500">{token.pickup_address?.split(',')[0] || 'Unknown location'}</p>
+                          <p className="text-xs text-slate-600">{new Date(token.created_at).toLocaleTimeString()}</p>
+                        </div>
+                      );
+                    })}
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+
+            {/* Ambulance Fleet Status - No Gap */}
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 -mt-6">
+              <div className="lg:col-span-3">
+                <Card className="bg-slate-900/80 border-slate-700 rounded-xl backdrop-blur-sm shadow-lg">
+                  <CardHeader className="bg-blue-600 text-white rounded-t-xl">
+                    <div className="flex items-center gap-3">
+                      <Ambulance className="w-6 h-6" />
+                      <CardTitle className="text-xl">Ambulance Fleet Status</CardTitle>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-6 space-y-4">
+                    {ambulances.length === 0 ? (
+                      <div className="text-center py-8 text-slate-400">
+                        No ambulances in fleet
+                      </div>
+                    ) : (
+                      ambulances.slice(0, 5).map((ambulance) => {
+                        const activeToken = [...pendingTokens, ...assignedTokens, ...activeTokens].find(t => t.ambulance_id === ambulance.id);
+                        const isOnDuty = ambulance.emergency_status === 'active' || ambulance.emergency_status === 'responding' || !!activeToken;
+                        const batteryLevel = Math.floor(Math.random() * 30) + 70; // Simulated battery 70-100%
+                        
+                        return (
+                          <div key={ambulance.id} className="flex items-center justify-between p-4 bg-slate-800/50 rounded-lg border border-slate-700">
+                            <div className="flex items-center gap-4">
+                              <div className="flex gap-2">
+                                <Badge className={`${isOnDuty ? 'bg-blue-600' : 'bg-green-600'} text-white`}>
+                                  {isOnDuty ? 'DISPATCHED' : 'AVAILABLE'}
+                                </Badge>
+                                <Badge className="bg-green-600 text-white">
+                                  BASIC CARE
+                                </Badge>
+                              </div>
+                              <div>
+                                <p className="font-semibold text-white">{ambulance.vehicle_number}</p>
+                                <p className="text-sm text-slate-400">Driver: {ambulance.driver_id ? 'Assigned' : 'Unassigned'}</p>
+                                <p className="text-xs text-slate-500">
+                                  {ambulance.current_lat?.toFixed(4)}°N, {ambulance.current_lng?.toFixed(4)}°E
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-4">
+                              <div className="flex items-center gap-2">
+                                <div className="w-20 h-2 bg-slate-700 rounded-full overflow-hidden">
+                                  <div 
+                                    className={`h-full rounded-full ${
+                                      batteryLevel > 80 ? 'bg-green-500' : 
+                                      batteryLevel > 50 ? 'bg-yellow-500' : 'bg-red-500'
+                                    }`}
+                                    style={{ width: `${batteryLevel}%` }}
+                                  ></div>
+                                </div>
+                                <span className="text-sm text-slate-400">{batteryLevel}%</span>
+                              </div>
+                              <div className={`w-3 h-3 rounded-full ${isOnDuty ? 'bg-blue-500 animate-pulse' : 'bg-green-500'}`}></div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Quick Actions */}
+              <div className="lg:col-span-1">
+                <Card className="bg-slate-900/80 border-slate-700 rounded-xl backdrop-blur-sm shadow-lg">
+                  <CardHeader>
+                    <CardTitle className="text-lg text-white">Quick Actions</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-4 space-y-3">
+                    <Button 
+                      className="w-full bg-red-600 hover:bg-red-700 text-white rounded-lg shadow-md hover:shadow-lg transition-all"
+                      onClick={() => setActiveNav('create-emergency')}
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      Create Emergency Request
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      className="w-full border-slate-600 text-slate-300 hover:bg-slate-800 rounded-lg"
+                      onClick={() => setActiveNav('livemap')}
+                    >
+                      <MapIcon className="w-4 h-4 mr-2" />
+                      View Live Map
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      className="w-full border-slate-600 text-slate-300 hover:bg-slate-800 rounded-lg"
+                      onClick={() => setActiveNav('ambulances')}
+                    >
+                      <Ambulance className="w-4 h-4 mr-2" />
+                      Manage Fleet
+                    </Button>
+                  </CardContent>
+                </Card>
+              </div>
             </div>
 
             {/* Pending Tokens Alert */}
