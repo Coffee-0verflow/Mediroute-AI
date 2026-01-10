@@ -557,6 +557,7 @@ export function useEmergencyTokens() {
   // Complete emergency (arrived at hospital)
   const completeEmergency = async (tokenId: string, ambulanceId: string) => {
     try {
+      // Update token status to completed
       await supabase
         .from('emergency_tokens')
         .update({
@@ -565,6 +566,7 @@ export function useEmergencyTokens() {
         })
         .eq('id', tokenId);
 
+      // Clear ambulance active token and set to inactive
       await supabase
         .from('ambulances')
         .update({
@@ -573,7 +575,12 @@ export function useEmergencyTokens() {
         })
         .eq('id', ambulanceId);
 
+      // Immediately clear active token in local state
       setActiveToken(null);
+      
+      // Refresh tokens to ensure clean state
+      await fetchTokens();
+      
       return true;
     } catch (error) {
       console.error('Error completing emergency:', error);
@@ -584,6 +591,7 @@ export function useEmergencyTokens() {
   // Cancel emergency
   const cancelEmergency = async (tokenId: string, ambulanceId: string) => {
     try {
+      // Update token status to cancelled
       await supabase
         .from('emergency_tokens')
         .update({
@@ -591,6 +599,7 @@ export function useEmergencyTokens() {
         })
         .eq('id', tokenId);
 
+      // Clear ambulance active token and set to inactive
       await supabase
         .from('ambulances')
         .update({
@@ -599,7 +608,12 @@ export function useEmergencyTokens() {
         })
         .eq('id', ambulanceId);
 
+      // Immediately clear active token in local state
       setActiveToken(null);
+      
+      // Refresh tokens to ensure clean state
+      await fetchTokens();
+      
       return true;
     } catch (error) {
       console.error('Error cancelling emergency:', error);
