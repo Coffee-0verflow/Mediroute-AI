@@ -10,14 +10,33 @@ import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 import { 
   Shield, Power, Radio, MapPin, Ambulance, Building2, 
   BarChart3, Users, Settings, AlertTriangle, CheckCircle, 
   XCircle, Clock, TrendingUp, Activity, Zap, Lock, 
-  Unlock, Eye, RotateCcw, LogOut, Bell, Map
+  Unlock, Eye, RotateCcw, LogOut, Bell, Map, UserPlus,
+  RefreshCw, Link2, Trash2, User, Mail
 } from 'lucide-react';
 import { toast } from 'sonner';
 import MapComponent from '@/components/Map';
+
+interface DriverWithAmbulance {
+  id: string;
+  email: string;
+  full_name: string | null;
+  role: string;
+  is_approved: boolean;
+  ambulance_id: string | null;
+  created_at: string;
+  ambulance?: {
+    id: string;
+    vehicle_number: string;
+    emergency_status: string;
+  } | null;
+}
 
 interface SystemControl {
   id: string;
@@ -101,6 +120,15 @@ export default function AdminCommandCenter() {
     peak_emergency_zones: []
   });
   
+  // Driver Management State
+  const [drivers, setDrivers] = useState<DriverWithAmbulance[]>([]);
+  const [newDriverEmail, setNewDriverEmail] = useState('');
+  const [newDriverPassword, setNewDriverPassword] = useState('');
+  const [newDriverName, setNewDriverName] = useState('');
+  const [newVehicleNumber, setNewVehicleNumber] = useState('');
+  const [creatingDriver, setCreatingDriver] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  
   const [loadingData, setLoadingData] = useState(true);
 
   // Auth check
@@ -133,6 +161,7 @@ export default function AdminCommandCenter() {
         loadTrafficData(),
         loadFleetData(),
         loadHospitalData(),
+        loadDriverData(),
         loadAnalytics()
       ]);
     } catch (error) {
@@ -141,6 +170,29 @@ export default function AdminCommandCenter() {
     } finally {
       setLoadingData(false);
     }
+  };
+
+  const loadDriverData = async () => {
+    const { data: driversData, error } = await supabase
+      .from('profiles')
+      .select(`
+        *,
+        ambulances!profiles_ambulance_id_fkey(id, vehicle_number, emergency_status)
+      `)
+      .eq('role', 'ambulance')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error loading drivers:', error);
+      return;
+    }
+
+    const driversWithAmbulances = (driversData || []).map(driver => ({
+      ...driver,
+      ambulance: driver.ambulances || null
+    }));
+
+    setDrivers(driversWithAmbulances);
   };
 
   const loadSystemControl = async () => {
@@ -251,10 +303,156 @@ export default function AdminCommandCenter() {
       supabase.channel('traffic_signals').on('postgres_changes',
         { event: '*', schema: 'public', table: 'traffic_signals' },
         () => loadTrafficData()
+      ).subscribe(),
+      
+      supabase.channel('profiles').on('postgres_changes',
+        { event: '*', schema: 'public', table: 'profiles' },
+        () => loadDriverData()
+      ).subscribe(),
+      
+      supabase.channel('hospital_capacity').on('postgres_changes',
+        { event: '*', schema: 'public', table: 'hospital_capacity' },
+        () => loadHospitalData()
       ).subscribe()
     ];
     
     return subscriptions;
+  };
+
+  // Driver Management Functions
+  const handleCreateDriver = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCreatingDriver(true);
+
+    try {
+      const { data: currentSession } = await supabase.auth.getSession();
+      const adminSession = currentSession.session;
+
+      if (!adminSession) throw new Error('Admin session not found');
+
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: newDriverEmail,
+        password: newDriverPassword,
+        options: {
+          emailRedirectTo: `${window.location.origin}/`,
+          data: { full_name: newDriverName, role: 'ambulance' }
+        }
+      });
+
+      if (authError) throw authError;
+
+      await supabase.auth.setSession({
+        access_token: adminSession.access_token,
+        refresh_token: adminSession.refresh_token
+      });
+
+      if (authData.user) {
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
+        await supabase.from('profiles')
+          .update({ is_approved: true })
+          .eq('id', authData.user.id);
+
+        if (newVehicleNumber) {
+          await supabase.from('ambulances').insert({
+            driver_id: authData.user.id,
+            vehicle_number: newVehicleNumber,
+            current_lat: 28.6139,
+            current_lng: 77.2090,
+            heading: 0,
+            speed: 0,
+            emergency_status: 'inactive'
+          });
+        }
+
+        toast.success(`Driver ${newDriverName} created and approved`);
+        setDialogOpen(false);
+        setNewDriverEmail('');
+        setNewDriverPassword('');
+        setNewDriverName('');
+        setNewVehicleNumber('');
+        loadDriverData();
+        loadFleetData();
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to create driver');
+    } finally {
+      setCreatingDriver(false);
+    }
+  };
+
+  const handleToggleApproval = async (driver: DriverWithAmbulance) => {
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ is_approved: !driver.is_approved })
+        .eq('id', driver.id);
+
+      if (error) throw error;
+
+      toast.success(`Driver ${driver.is_approved ? 'suspended' : 'approved'}`);
+      loadDriverData();
+    } catch (error: any) {
+      toast.error('Failed to update driver status');
+    }
+  };
+
+  const handleDeleteDriver = async (driver: DriverWithAmbulance) => {
+    if (!confirm(`Delete ${driver.full_name || driver.email}?`)) return;
+
+    try {
+      if (driver.ambulance) {
+        await supabase.from('ambulances')
+          .update({ driver_id: null })
+          .eq('id', driver.ambulance.id);
+      }
+
+      await supabase.from('profiles').delete().eq('id', driver.id);
+      toast.success('Driver deleted');
+      loadDriverData();
+      loadFleetData();
+    } catch (error: any) {
+      toast.error('Failed to delete driver');
+    }
+  };
+
+  // Hospital Management Functions
+  const toggleHospitalAcceptance = async (hospitalId: string, accepting: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('hospital_capacity')
+        .update({
+          is_accepting_patients: accepting,
+          last_updated: new Date().toISOString()
+        })
+        .eq('hospital_id', hospitalId);
+
+      if (error) throw error;
+
+      toast.success(`Hospital ${accepting ? 'reopened' : 'closed'} for new patients`);
+      loadHospitalData();
+    } catch (error: any) {
+      toast.error('Failed to update hospital status');
+    }
+  };
+
+  const updateHospitalBeds = async (hospitalId: string, bedType: string, count: number) => {
+    try {
+      const { error } = await supabase
+        .from('hospital_capacity')
+        .update({
+          [bedType]: count,
+          last_updated: new Date().toISOString()
+        })
+        .eq('hospital_id', hospitalId);
+
+      if (error) throw error;
+
+      toast.success('Hospital capacity updated');
+      loadHospitalData();
+    } catch (error: any) {
+      toast.error('Failed to update capacity');
+    }
   };
 
   // System Control Actions
@@ -352,6 +550,8 @@ export default function AdminCommandCenter() {
   const activeEmergencies = emergencyTokens.filter(t => ['assigned', 'in_progress', 'to_hospital'].includes(t.status));
   const operationalAmbulances = ambulances.filter(a => !a.is_blocked);
   const blockedAmbulances = ambulances.filter(a => a.is_blocked);
+  const pendingDrivers = drivers.filter(d => !d.is_approved);
+  const approvedDrivers = drivers.filter(d => d.is_approved);
 
   return (
     <div className="min-h-screen bg-slate-900">
@@ -388,7 +588,7 @@ export default function AdminCommandCenter() {
 
       <div className="container mx-auto p-6 space-y-6">
         {/* Quick Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
           <Card className="bg-slate-800/50 border-slate-700">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
@@ -417,10 +617,22 @@ export default function AdminCommandCenter() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-slate-400">Avg Response</p>
-                  <p className="text-2xl font-bold text-blue-400">{Math.floor(analytics.avg_response_time_seconds / 60)}m</p>
+                  <p className="text-sm text-slate-400">Drivers</p>
+                  <p className="text-2xl font-bold text-blue-400">{approvedDrivers.length}/{drivers.length}</p>
                 </div>
-                <Clock className="w-8 h-8 text-blue-400" />
+                <Users className="w-8 h-8 text-blue-400" />
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card className="bg-slate-800/50 border-slate-700">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-slate-400">Avg Response</p>
+                  <p className="text-2xl font-bold text-amber-400">{Math.floor(analytics.avg_response_time_seconds / 60)}m</p>
+                </div>
+                <Clock className="w-8 h-8 text-amber-400" />
               </div>
             </CardContent>
           </Card>
@@ -430,9 +642,9 @@ export default function AdminCommandCenter() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-slate-400">Lives Saved</p>
-                  <p className="text-2xl font-bold text-amber-400">{analytics.lives_saved_estimate}</p>
+                  <p className="text-2xl font-bold text-emerald-400">{analytics.lives_saved_estimate}</p>
                 </div>
-                <TrendingUp className="w-8 h-8 text-amber-400" />
+                <TrendingUp className="w-8 h-8 text-emerald-400" />
               </div>
             </CardContent>
           </Card>
@@ -444,6 +656,10 @@ export default function AdminCommandCenter() {
             <TabsTrigger value="control" className="data-[state=active]:bg-amber-600">
               <Power className="w-4 h-4 mr-2" />
               System Control
+            </TabsTrigger>
+            <TabsTrigger value="drivers" className="data-[state=active]:bg-amber-600">
+              <Users className="w-4 h-4 mr-2" />
+              Driver Management
             </TabsTrigger>
             <TabsTrigger value="fleet" className="data-[state=active]:bg-amber-600">
               <Ambulance className="w-4 h-4 mr-2" />
@@ -549,6 +765,196 @@ export default function AdminCommandCenter() {
                       ]}
                     />
                   </div>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* Driver Management Tab */}
+          <TabsContent value="drivers" className="space-y-4">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-xl font-bold text-white">Driver Management</h3>
+                <p className="text-slate-400">Manage ambulance drivers and approvals</p>
+              </div>
+              <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button className="bg-amber-600 hover:bg-amber-700">
+                    <UserPlus className="w-4 h-4 mr-2" />
+                    Add Driver
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="bg-slate-800 border-slate-700 text-white">
+                  <DialogHeader>
+                    <DialogTitle>Create New Driver</DialogTitle>
+                    <DialogDescription className="text-slate-400">
+                      Create a pre-approved ambulance driver account
+                    </DialogDescription>
+                  </DialogHeader>
+                  <form onSubmit={handleCreateDriver} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label className="text-slate-200">Full Name</Label>
+                      <Input
+                        value={newDriverName}
+                        onChange={(e) => setNewDriverName(e.target.value)}
+                        placeholder="John Doe"
+                        required
+                        className="bg-slate-700/50 border-slate-600 text-white"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-slate-200">Email</Label>
+                      <Input
+                        type="email"
+                        value={newDriverEmail}
+                        onChange={(e) => setNewDriverEmail(e.target.value)}
+                        placeholder="driver@example.com"
+                        required
+                        className="bg-slate-700/50 border-slate-600 text-white"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-slate-200">Password</Label>
+                      <Input
+                        type="password"
+                        value={newDriverPassword}
+                        onChange={(e) => setNewDriverPassword(e.target.value)}
+                        placeholder="••••••••"
+                        required
+                        minLength={6}
+                        className="bg-slate-700/50 border-slate-600 text-white"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-slate-200">Vehicle Number (Optional)</Label>
+                      <Input
+                        value={newVehicleNumber}
+                        onChange={(e) => setNewVehicleNumber(e.target.value)}
+                        placeholder="AMB-001"
+                        className="bg-slate-700/50 border-slate-600 text-white"
+                      />
+                    </div>
+                    <Button type="submit" className="w-full bg-amber-600 hover:bg-amber-700" disabled={creatingDriver}>
+                      {creatingDriver ? 'Creating...' : 'Create Driver Account'}
+                    </Button>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            </div>
+
+            <div className="grid gap-4">
+              {pendingDrivers.length > 0 && (
+                <Card className="bg-red-900/20 border-red-700">
+                  <CardHeader>
+                    <CardTitle className="text-red-400 flex items-center gap-2">
+                      <AlertTriangle className="w-5 h-5" />
+                      Pending Approvals ({pendingDrivers.length})
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {pendingDrivers.map((driver) => (
+                        <div key={driver.id} className="flex items-center justify-between p-3 bg-slate-700/50 rounded-lg">
+                          <div>
+                            <p className="font-medium text-white">{driver.full_name || 'Unnamed'}</p>
+                            <p className="text-sm text-slate-400">{driver.email}</p>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              className="bg-green-600 hover:bg-green-700"
+                              onClick={() => handleToggleApproval(driver)}
+                            >
+                              <CheckCircle className="w-4 h-4 mr-1" />
+                              Approve
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => handleDeleteDriver(driver)}
+                            >
+                              <XCircle className="w-4 h-4 mr-1" />
+                              Reject
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              <Card className="bg-slate-800/50 border-slate-700">
+                <CardHeader>
+                  <CardTitle className="text-white">All Drivers ({drivers.length})</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-slate-700">
+                        <TableHead className="text-slate-300">Driver</TableHead>
+                        <TableHead className="text-slate-300">Email</TableHead>
+                        <TableHead className="text-slate-300">Ambulance</TableHead>
+                        <TableHead className="text-slate-300">Status</TableHead>
+                        <TableHead className="text-slate-300">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {drivers.map((driver) => (
+                        <TableRow key={driver.id} className="border-slate-700">
+                          <TableCell className="text-white font-medium">
+                            {driver.full_name || 'Unnamed'}
+                          </TableCell>
+                          <TableCell className="text-slate-300">{driver.email}</TableCell>
+                          <TableCell>
+                            {driver.ambulance ? (
+                              <Badge variant="outline" className="border-blue-500 text-blue-400">
+                                <Ambulance className="w-3 h-3 mr-1" />
+                                {driver.ambulance.vehicle_number}
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="border-slate-500 text-slate-400">
+                                Not assigned
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {driver.is_approved ? (
+                              <Badge className="bg-green-600/20 text-green-400 border-green-600">
+                                <CheckCircle className="w-3 h-3 mr-1" />
+                                Approved
+                              </Badge>
+                            ) : (
+                              <Badge className="bg-red-600/20 text-red-400 border-red-600">
+                                <XCircle className="w-3 h-3 mr-1" />
+                                Pending
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                variant={driver.is_approved ? "destructive" : "default"}
+                                onClick={() => handleToggleApproval(driver)}
+                                className={driver.is_approved ? "" : "bg-green-600 hover:bg-green-700"}
+                              >
+                                {driver.is_approved ? 'Suspend' : 'Approve'}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-red-600 text-red-400 hover:bg-red-600/20"
+                                onClick={() => handleDeleteDriver(driver)}
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </CardContent>
               </Card>
             </div>
@@ -671,7 +1077,7 @@ export default function AdminCommandCenter() {
               <CardHeader>
                 <CardTitle className="text-white">Hospital Capacity Management</CardTitle>
                 <CardDescription className="text-slate-400">
-                  Monitor and manage hospital bed availability
+                  Monitor and manage hospital bed availability in real-time
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -679,39 +1085,173 @@ export default function AdminCommandCenter() {
                   {hospitalCapacities.map((hospital) => {
                     const occupancyRate = (hospital.occupied_beds / Math.max(hospital.total_beds, 1)) * 100;
                     const icuOccupancyRate = (hospital.occupied_icu_beds / Math.max(hospital.icu_beds, 1)) * 100;
+                    const emergencyOccupancyRate = (hospital.occupied_emergency_beds / Math.max(hospital.emergency_beds, 1)) * 100;
                     
                     return (
                       <div key={hospital.id} className="p-4 bg-slate-700/50 rounded-lg border border-slate-600">
-                        <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center justify-between mb-4">
                           <div>
-                            <p className="font-medium text-white">{hospital.hospital_name}</p>
+                            <p className="font-medium text-white text-lg">{hospital.hospital_name}</p>
+                            <p className="text-sm text-slate-400">Last updated: {new Date(hospital.last_updated).toLocaleTimeString()}</p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <div className="text-right">
+                              <p className="text-sm text-slate-400">Overall Occupancy</p>
+                              <p className={`text-2xl font-bold ${
+                                occupancyRate > 90 ? 'text-red-400' : 
+                                occupancyRate > 75 ? 'text-amber-400' : 'text-green-400'
+                              }`}>{occupancyRate.toFixed(0)}%</p>
+                            </div>
+                            <Switch
+                              checked={hospital.is_accepting_patients}
+                              onCheckedChange={(accepting) => toggleHospitalAcceptance(hospital.hospital_id, accepting)}
+                              className="data-[state=checked]:bg-green-600"
+                            />
                             <Badge variant={hospital.is_accepting_patients ? 'default' : 'destructive'}>
                               {hospital.is_accepting_patients ? 'ACCEPTING' : 'FULL'}
                             </Badge>
                           </div>
-                          <div className="text-right">
-                            <p className="text-sm text-slate-400">Overall Occupancy</p>
-                            <p className="text-lg font-bold text-white">{occupancyRate.toFixed(0)}%</p>
-                          </div>
                         </div>
                         
-                        <div className="grid grid-cols-3 gap-4 text-sm">
-                          <div>
-                            <p className="text-slate-400">General Beds</p>
-                            <p className="text-white">{hospital.occupied_beds}/{hospital.total_beds}</p>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          {/* General Beds */}
+                          <div className="p-3 bg-slate-600/30 rounded-lg">
+                            <div className="flex items-center justify-between mb-2">
+                              <p className="text-sm font-medium text-slate-300">General Beds</p>
+                              <Badge variant="outline" className={occupancyRate > 90 ? 'border-red-500 text-red-400' : 'border-slate-500'}>
+                                {occupancyRate.toFixed(0)}%
+                              </Badge>
+                            </div>
+                            <div className="flex items-center gap-2 mb-2">
+                              <Input
+                                type="number"
+                                value={hospital.occupied_beds}
+                                onChange={(e) => updateHospitalBeds(hospital.hospital_id, 'occupied_beds', parseInt(e.target.value) || 0)}
+                                className="w-20 h-8 bg-slate-700 border-slate-600 text-white text-sm"
+                                min="0"
+                                max={hospital.total_beds}
+                              />
+                              <span className="text-slate-400">/</span>
+                              <Input
+                                type="number"
+                                value={hospital.total_beds}
+                                onChange={(e) => updateHospitalBeds(hospital.hospital_id, 'total_beds', parseInt(e.target.value) || 0)}
+                                className="w-20 h-8 bg-slate-700 border-slate-600 text-white text-sm"
+                                min="0"
+                              />
+                            </div>
+                            <div className="w-full bg-slate-700 rounded-full h-2">
+                              <div 
+                                className={`h-2 rounded-full transition-all ${
+                                  occupancyRate > 90 ? 'bg-red-500' : 
+                                  occupancyRate > 75 ? 'bg-amber-500' : 'bg-green-500'
+                                }`}
+                                style={{ width: `${Math.min(occupancyRate, 100)}%` }}
+                              />
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-slate-400">ICU Beds</p>
-                            <p className="text-white">{hospital.occupied_icu_beds}/{hospital.icu_beds}</p>
+
+                          {/* ICU Beds */}
+                          <div className="p-3 bg-slate-600/30 rounded-lg">
+                            <div className="flex items-center justify-between mb-2">
+                              <p className="text-sm font-medium text-slate-300">ICU Beds</p>
+                              <Badge variant="outline" className={icuOccupancyRate > 90 ? 'border-red-500 text-red-400' : 'border-slate-500'}>
+                                {icuOccupancyRate.toFixed(0)}%
+                              </Badge>
+                            </div>
+                            <div className="flex items-center gap-2 mb-2">
+                              <Input
+                                type="number"
+                                value={hospital.occupied_icu_beds}
+                                onChange={(e) => updateHospitalBeds(hospital.hospital_id, 'occupied_icu_beds', parseInt(e.target.value) || 0)}
+                                className="w-20 h-8 bg-slate-700 border-slate-600 text-white text-sm"
+                                min="0"
+                                max={hospital.icu_beds}
+                              />
+                              <span className="text-slate-400">/</span>
+                              <Input
+                                type="number"
+                                value={hospital.icu_beds}
+                                onChange={(e) => updateHospitalBeds(hospital.hospital_id, 'icu_beds', parseInt(e.target.value) || 0)}
+                                className="w-20 h-8 bg-slate-700 border-slate-600 text-white text-sm"
+                                min="0"
+                              />
+                            </div>
+                            <div className="w-full bg-slate-700 rounded-full h-2">
+                              <div 
+                                className={`h-2 rounded-full transition-all ${
+                                  icuOccupancyRate > 90 ? 'bg-red-500' : 
+                                  icuOccupancyRate > 75 ? 'bg-amber-500' : 'bg-blue-500'
+                                }`}
+                                style={{ width: `${Math.min(icuOccupancyRate, 100)}%` }}
+                              />
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-slate-400">Emergency Beds</p>
-                            <p className="text-white">{hospital.occupied_emergency_beds}/{hospital.emergency_beds}</p>
+
+                          {/* Emergency Beds */}
+                          <div className="p-3 bg-slate-600/30 rounded-lg">
+                            <div className="flex items-center justify-between mb-2">
+                              <p className="text-sm font-medium text-slate-300">Emergency Beds</p>
+                              <Badge variant="outline" className={emergencyOccupancyRate > 90 ? 'border-red-500 text-red-400' : 'border-slate-500'}>
+                                {emergencyOccupancyRate.toFixed(0)}%
+                              </Badge>
+                            </div>
+                            <div className="flex items-center gap-2 mb-2">
+                              <Input
+                                type="number"
+                                value={hospital.occupied_emergency_beds}
+                                onChange={(e) => updateHospitalBeds(hospital.hospital_id, 'occupied_emergency_beds', parseInt(e.target.value) || 0)}
+                                className="w-20 h-8 bg-slate-700 border-slate-600 text-white text-sm"
+                                min="0"
+                                max={hospital.emergency_beds}
+                              />
+                              <span className="text-slate-400">/</span>
+                              <Input
+                                type="number"
+                                value={hospital.emergency_beds}
+                                onChange={(e) => updateHospitalBeds(hospital.hospital_id, 'emergency_beds', parseInt(e.target.value) || 0)}
+                                className="w-20 h-8 bg-slate-700 border-slate-600 text-white text-sm"
+                                min="0"
+                              />
+                            </div>
+                            <div className="w-full bg-slate-700 rounded-full h-2">
+                              <div 
+                                className={`h-2 rounded-full transition-all ${
+                                  emergencyOccupancyRate > 90 ? 'bg-red-500' : 
+                                  emergencyOccupancyRate > 75 ? 'bg-amber-500' : 'bg-purple-500'
+                                }`}
+                                style={{ width: `${Math.min(emergencyOccupancyRate, 100)}%` }}
+                              />
+                            </div>
                           </div>
+                        </div>
+
+                        <div className="mt-3 flex items-center justify-between">
+                          <div className="flex items-center gap-4 text-sm text-slate-400">
+                            <span>Available: {hospital.total_beds - hospital.occupied_beds} general</span>
+                            <span>•</span>
+                            <span>{hospital.icu_beds - hospital.occupied_icu_beds} ICU</span>
+                            <span>•</span>
+                            <span>{hospital.emergency_beds - hospital.occupied_emergency_beds} emergency</span>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant={hospital.is_accepting_patients ? "destructive" : "default"}
+                            onClick={() => toggleHospitalAcceptance(hospital.hospital_id, !hospital.is_accepting_patients)}
+                            className={hospital.is_accepting_patients ? "" : "bg-green-600 hover:bg-green-700"}
+                          >
+                            {hospital.is_accepting_patients ? 'Close Hospital' : 'Reopen Hospital'}
+                          </Button>
                         </div>
                       </div>
                     );
                   })}
+                  
+                  {hospitalCapacities.length === 0 && (
+                    <div className="text-center py-8 text-slate-400">
+                      No hospital data available. Please add hospitals to the system.
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>

@@ -4,6 +4,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useAmbulance } from '@/hooks/useAmbulance';
 import { useTrafficSignals } from '@/hooks/useTrafficSignals';
 import { useEmergencyTokens } from '@/hooks/useEmergencyTokens';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -11,7 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { AlertTriangle, MapPin, Navigation, LogOut, Power, Radio, Ticket, Play, CheckCircle, X, Route, ExternalLink, User, Building2, Heart, Check, ChevronsUpDown } from 'lucide-react';
+import { AlertTriangle, MapPin, Navigation, LogOut, Power, Radio, Ticket, Play, CheckCircle, X, Route, ExternalLink, User, Building2, Heart, Check, ChevronsUpDown, Bell } from 'lucide-react';
 import Map from '@/components/Map';
 import TrafficSignalStatusPanel from '@/components/TrafficSignalStatusPanel';
 import { toast } from 'sonner';
@@ -59,6 +60,10 @@ export default function AmbulanceDashboard() {
   const [watchId, setWatchId] = useState<number | null>(null);
   const lastPositionRef = useRef<{ lat: number; lng: number; time: number } | null>(null);
   
+  // Emergency broadcast state
+  const [emergencyBroadcast, setEmergencyBroadcast] = useState<string | null>(null);
+  const [showBroadcast, setShowBroadcast] = useState(false);
+  
   // Emergency creation state
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [pickupLocation, setPickupLocation] = useState<{ lat: number; lng: number; address?: string } | null>(null);
@@ -91,6 +96,31 @@ export default function AmbulanceDashboard() {
       navigate('/auth');
     }
   }, [user, authLoading, navigate]);
+
+  // Emergency broadcast listener
+  useEffect(() => {
+    const subscription = supabase
+      .channel('system_control')
+      .on('postgres_changes', 
+        { event: 'UPDATE', schema: 'public', table: 'system_control' },
+        (payload) => {
+          if (payload.new.broadcast_active && payload.new.emergency_broadcast) {
+            setEmergencyBroadcast(payload.new.emergency_broadcast);
+            setShowBroadcast(true);
+            
+            // Auto-hide after 1 minute
+            setTimeout(() => {
+              setShowBroadcast(false);
+            }, 60000);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
 
   // Geolocation tracking when journey is in progress
   useEffect(() => {
@@ -416,6 +446,29 @@ export default function AmbulanceDashboard() {
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Emergency Broadcast Popup */}
+      {showBroadcast && emergencyBroadcast && (
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 max-w-md w-full mx-4">
+          <div className="bg-red-600 border border-red-500 rounded-lg p-4 shadow-lg animate-pulse">
+            <div className="flex items-start gap-3">
+              <Bell className="w-6 h-6 text-white flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <h3 className="font-bold text-white text-sm">🚨 EMERGENCY BROADCAST</h3>
+                <p className="text-white text-sm mt-1">{emergencyBroadcast}</p>
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setShowBroadcast(false)}
+                className="text-white hover:bg-red-700 p-1 h-auto"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <nav className={`border-b px-4 py-3 transition-colors ${hasActiveEmergency ? 'bg-emergency/10 border-emergency/30' : 'bg-card border-border'}`}>
         <div className="container mx-auto flex justify-between items-center">

@@ -6,6 +6,7 @@ import { useAmbulanceRealtime } from '@/hooks/useAmbulanceRealtime';
 import { useTrafficSignals } from '@/hooks/useTrafficSignals';
 import { useEmergencyTokens, RouteData } from '@/hooks/useEmergencyTokens';
 import { useHospitals, Hospital } from '@/hooks/useHospitals';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -38,7 +39,9 @@ import {
   Settings,
   Bed,
   Activity,
-  Heart
+  Heart,
+  Bell,
+  X
 } from 'lucide-react';
 import Map from '@/components/Map';
 import TwoLegRouteMap from '@/components/TwoLegRouteMap';
@@ -64,6 +67,10 @@ export default function HospitalDashboard() {
   const [declineReason, setDeclineReason] = useState('');
   const [selectedRegion, setSelectedRegion] = useState<string>('all');
   const [showAddHospital, setShowAddHospital] = useState(false);
+  
+  // Emergency broadcast state
+  const [emergencyBroadcast, setEmergencyBroadcast] = useState<string | null>(null);
+  const [showBroadcast, setShowBroadcast] = useState(false);
   const [hospitalForm, setHospitalForm] = useState({
     name: '',
     address: '',
@@ -89,6 +96,31 @@ export default function HospitalDashboard() {
       navigate('/auth');
     }
   }, [user, authLoading, navigate]);
+
+  // Emergency broadcast listener
+  useEffect(() => {
+    const subscription = supabase
+      .channel('system_control')
+      .on('postgres_changes', 
+        { event: 'UPDATE', schema: 'public', table: 'system_control' },
+        (payload) => {
+          if (payload.new.broadcast_active && payload.new.emergency_broadcast) {
+            setEmergencyBroadcast(payload.new.emergency_broadcast);
+            setShowBroadcast(true);
+            
+            // Auto-hide after 1 minute
+            setTimeout(() => {
+              setShowBroadcast(false);
+            }, 60000);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     const interval = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -1266,6 +1298,29 @@ export default function HospitalDashboard() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col md:flex-row">
+      {/* Emergency Broadcast Popup */}
+      {showBroadcast && emergencyBroadcast && (
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 max-w-md w-full mx-4">
+          <div className="bg-red-600 border border-red-500 rounded-lg p-4 shadow-lg animate-pulse">
+            <div className="flex items-start gap-3">
+              <Bell className="w-6 h-6 text-white flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <h3 className="font-bold text-white text-sm">🚨 EMERGENCY BROADCAST</h3>
+                <p className="text-white text-sm mt-1">{emergencyBroadcast}</p>
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setShowBroadcast(false)}
+                className="text-white hover:bg-red-700 p-1 h-auto"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Mobile Navigation */}
       <div className="md:hidden border-b bg-card">
         <div className="p-4 flex items-center justify-between">
