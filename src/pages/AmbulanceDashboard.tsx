@@ -63,6 +63,10 @@ export default function AmbulanceDashboard() {
   const [emergencyType, setEmergencyType] = useState<string>('');
   const [customEmergencyType, setCustomEmergencyType] = useState<string>('');
   const [isCreatingToken, setIsCreatingToken] = useState(false);
+  
+  // Location search state
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [isSearching, setIsSearching] = useState(false);
 
   const emergencyTypes = [
     { id: 'cardiac', label: 'Cardiac Emergency (Heart Attack)', keyword: 'Cardiac', icon: '❤️' },
@@ -175,6 +179,33 @@ export default function AmbulanceDashboard() {
 
   const handleLocationSelect = (lat: number, lng: number, address?: string) => {
     setPickupLocation({ lat, lng, address });
+  };
+
+  const searchLocation = async (query: string) => {
+    if (!query.trim()) return;
+    
+    setIsSearching(true);
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1&countrycodes=in`
+      );
+      const results = await response.json();
+      
+      if (results && results.length > 0) {
+        const result = results[0];
+        const lat = parseFloat(result.lat);
+        const lng = parseFloat(result.lon);
+        handleLocationSelect(lat, lng, result.display_name);
+        toast.success(`Location found: ${result.display_name}`);
+      } else {
+        toast.error('Location not found. Please try a different search term.');
+      }
+    } catch (error) {
+      console.error('Search error:', error);
+      toast.error('Failed to search location. Please try again.');
+    } finally {
+      setIsSearching(false);
+    }
   };
 
   const handleCreateToken = async () => {
@@ -609,6 +640,34 @@ export default function AmbulanceDashboard() {
                 </Button>
               ) : (
                 <div className="space-y-4">
+                  {/* Location Search Bar */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-emergency flex items-center gap-2">
+                      <MapPin className="w-4 h-4" />
+                      Search Patient Location
+                    </label>
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Search address, landmark, or area..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && searchLocation(searchQuery)}
+                        className="border-emergency/30"
+                      />
+                      <Button
+                        onClick={() => searchLocation(searchQuery)}
+                        disabled={!searchQuery.trim() || isSearching}
+                        variant="outline"
+                        size="sm"
+                      >
+                        {isSearching ? '...' : '🔍'}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Search for an address or click on the map to select patient location
+                    </p>
+                  </div>
+
                   {/* Emergency Type Selection */}
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-emergency flex items-center gap-2">
@@ -672,6 +731,7 @@ export default function AmbulanceDashboard() {
                         setPickupLocation(null);
                         setEmergencyType('');
                         setCustomEmergencyType('');
+                        setSearchQuery('');
                       }}
                     >
                       Cancel

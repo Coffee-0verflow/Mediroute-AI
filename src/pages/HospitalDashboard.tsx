@@ -1150,26 +1150,26 @@ export default function HospitalDashboard() {
                                 <div className="w-20 h-2 bg-slate-700 rounded-full overflow-hidden">
                                   <div 
                                     className={`h-full rounded-full ${
-                                      batteryLevel > 80 ? 'bg-green-500' : 
-                                      batteryLevel > 50 ? 'bg-yellow-500' : 'bg-red-500'
-                                    }`}
-                                    style={{ width: `${batteryLevel}%` }}
-                                  ></div>
-                                </div>
-                                <span className="text-sm text-slate-400">{batteryLevel}%</span>
-                              </div>
-                              {/* Add fuel level indicator */}
-                              <div className="flex items-center gap-2">
-                                <div className="w-16 h-2 bg-slate-700 rounded-full overflow-hidden">
-                                  <div 
-                                    className={`h-full rounded-full ${
                                       fuelLevel > 60 ? 'bg-blue-500' : 
                                       fuelLevel > 30 ? 'bg-orange-500' : 'bg-red-500'
                                     }`}
                                     style={{ width: `${fuelLevel}%` }}
                                   ></div>
                                 </div>
-                                <span className="text-xs text-slate-400">⛽{fuelLevel}%</span>
+                                <span className="text-sm text-slate-400">⛽{fuelLevel}%</span>
+                              </div>
+                              {/* Add battery level indicator */}
+                              <div className="flex items-center gap-2">
+                                <div className="w-16 h-2 bg-slate-700 rounded-full overflow-hidden">
+                                  <div 
+                                    className={`h-full rounded-full ${
+                                      batteryLevel > 80 ? 'bg-green-500' : 
+                                      batteryLevel > 50 ? 'bg-yellow-500' : 'bg-red-500'
+                                    }`}
+                                    style={{ width: `${batteryLevel}%` }}
+                                  ></div>
+                                </div>
+                                <span className="text-xs text-slate-400">🔋{batteryLevel}%</span>
                               </div>
                               <div className={`w-3 h-3 rounded-full ${isOnDuty ? 'bg-blue-500 animate-pulse' : 'bg-green-500'}`}></div>
                             </div>
