@@ -9,7 +9,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { AlertTriangle, MapPin, Navigation, LogOut, Power, Radio, Ticket, Play, CheckCircle, X, Route, ExternalLink, User, Building2, Heart } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { AlertTriangle, MapPin, Navigation, LogOut, Power, Radio, Ticket, Play, CheckCircle, X, Route, ExternalLink, User, Building2, Heart, Check, ChevronsUpDown } from 'lucide-react';
 import Map from '@/components/Map';
 import TrafficSignalStatusPanel from '@/components/TrafficSignalStatusPanel';
 import { toast } from 'sonner';
@@ -67,6 +69,9 @@ export default function AmbulanceDashboard() {
   // Location search state
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isSearching, setIsSearching] = useState(false);
+  const [locationSuggestions, setLocationSuggestions] = useState<Array<{id: string, name: string, lat: number, lng: number}>>([]);
+  const [showLocationDropdown, setShowLocationDropdown] = useState(false);
+  const [selectedLocationId, setSelectedLocationId] = useState<string>('');
 
   const emergencyTypes = [
     { id: 'cardiac', label: 'Cardiac Emergency (Heart Attack)', keyword: 'Cardiac', icon: '❤️' },
@@ -181,31 +186,54 @@ export default function AmbulanceDashboard() {
     setPickupLocation({ lat, lng, address });
   };
 
-  const searchLocation = async (query: string) => {
-    if (!query.trim()) return;
+  const searchLocationSuggestions = async (query: string) => {
+    if (!query.trim() || query.length < 3) {
+      setLocationSuggestions([]);
+      return;
+    }
     
     setIsSearching(true);
     try {
       const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1&countrycodes=in`
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&countrycodes=in`
       );
       const results = await response.json();
       
       if (results && results.length > 0) {
-        const result = results[0];
-        const lat = parseFloat(result.lat);
-        const lng = parseFloat(result.lon);
-        handleLocationSelect(lat, lng, result.display_name);
-        toast.success(`Location found: ${result.display_name}`);
+        const suggestions = results.map((result: any, index: number) => ({
+          id: `${result.place_id || index}`,
+          name: result.display_name,
+          lat: parseFloat(result.lat),
+          lng: parseFloat(result.lon)
+        }));
+        setLocationSuggestions(suggestions);
       } else {
-        toast.error('Location not found. Please try a different search term.');
+        setLocationSuggestions([]);
       }
     } catch (error) {
       console.error('Search error:', error);
-      toast.error('Failed to search location. Please try again.');
+      setLocationSuggestions([]);
     } finally {
       setIsSearching(false);
     }
+  };
+
+  // Debounced search function
+  React.useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (searchQuery && showLocationDropdown) {
+        searchLocationSuggestions(searchQuery);
+      }
+    }, 300);
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery, showLocationDropdown]);
+
+  const selectLocationFromDropdown = (suggestion: {id: string, name: string, lat: number, lng: number}) => {
+    handleLocationSelect(suggestion.lat, suggestion.lng, suggestion.name);
+    setSelectedLocationId(suggestion.id);
+    setSearchQuery(suggestion.name);
+    setShowLocationDropdown(false);
+    toast.success(`Location selected: ${suggestion.name}`);
   };
 
   const handleCreateToken = async () => {
@@ -640,29 +668,72 @@ export default function AmbulanceDashboard() {
                 </Button>
               ) : (
                 <div className="space-y-4">
-                  {/* Location Search Bar */}
+                  {/* Location Search Dropdown */}
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-emergency flex items-center gap-2">
                       <MapPin className="w-4 h-4" />
                       Search Patient Location
                     </label>
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="Search address, landmark, or area..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && searchLocation(searchQuery)}
-                        className="border-emergency/30"
-                      />
-                      <Button
-                        onClick={() => searchLocation(searchQuery)}
-                        disabled={!searchQuery.trim() || isSearching}
-                        variant="outline"
-                        size="sm"
-                      >
-                        {isSearching ? '...' : '🔍'}
-                      </Button>
-                    </div>
+                    <Popover open={showLocationDropdown} onOpenChange={setShowLocationDropdown}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          aria-expanded={showLocationDropdown}
+                          className="w-full justify-between border-emergency/30 text-left font-normal"
+                        >
+                          {pickupLocation ? (
+                            <span className="truncate">{pickupLocation.address || `${pickupLocation.lat.toFixed(4)}, ${pickupLocation.lng.toFixed(4)}`}</span>
+                          ) : (
+                            <span className="text-muted-foreground">Search address, landmark, or area...</span>
+                          )}
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-full p-0" align="start">
+                        <Command>
+                          <CommandInput
+                            placeholder="Type to search locations..."
+                            value={searchQuery}
+                            onValueChange={setSearchQuery}
+                          />
+                          <CommandList>
+                            <CommandEmpty>
+                              {isSearching ? (
+                                <div className="flex items-center justify-center py-4">
+                                  <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                                  <span className="ml-2 text-sm">Searching...</span>
+                                </div>
+                              ) : searchQuery.length < 3 ? (
+                                "Type at least 3 characters to search"
+                              ) : (
+                                "No locations found"
+                              )}
+                            </CommandEmpty>
+                            <CommandGroup>
+                              {locationSuggestions.map((suggestion) => (
+                                <CommandItem
+                                  key={suggestion.id}
+                                  value={suggestion.id}
+                                  onSelect={() => selectLocationFromDropdown(suggestion)}
+                                  className="cursor-pointer"
+                                >
+                                  <Check
+                                    className={`mr-2 h-4 w-4 ${
+                                      selectedLocationId === suggestion.id ? "opacity-100" : "opacity-0"
+                                    }`}
+                                  />
+                                  <div className="flex-1">
+                                    <div className="font-medium text-sm truncate">{suggestion.name.split(',')[0]}</div>
+                                    <div className="text-xs text-muted-foreground truncate">{suggestion.name}</div>
+                                  </div>
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
                     <p className="text-xs text-muted-foreground">
                       Search for an address or click on the map to select patient location
                     </p>
@@ -732,6 +803,9 @@ export default function AmbulanceDashboard() {
                         setEmergencyType('');
                         setCustomEmergencyType('');
                         setSearchQuery('');
+                        setLocationSuggestions([]);
+                        setShowLocationDropdown(false);
+                        setSelectedLocationId('');
                       }}
                     >
                       Cancel
