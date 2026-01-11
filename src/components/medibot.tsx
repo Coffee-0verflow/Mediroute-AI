@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
 // Auto backend selector
-const BACKEND_URL = import.meta.env.VITE_API_URL || "https://mediroute-ai.onrender.com";
+const BACKEND_URL = "https://mediroute-ai.onrender.com";
 
 
 export default function MediBot() {
